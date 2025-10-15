@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Tracker API — Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Arial; max-width: 900px; margin: 32px auto; padding: 0 16px; }
+    h1 { margin-bottom: 4px; }
+    p.lead { color: #444; margin-top: 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid #eee; font-size: 14px; }
+    th { background: #fafafa; }
+    .muted { color: #666; font-size: 13px; }
+    button { padding: 8px 12px; cursor: pointer; }
+    .center { text-align: center; color: #999; padding: 24px 0; }
+  </style>
+</head>
+<body>
+  <h1>Welcome — Tracker API</h1>
+  <p class="lead">This dashboard shows the latest SMS entries stored by the API.</p>
+
+  <div>
+    <button id="refresh">Refresh</button>
+    <span class="muted" id="status"></span>
+  </div>
+
+  <div id="table-wrap">
+    <div class="center" id="loading">Loading...</div>
+    <table id="sms-table" style="display:none">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>From</th>
+          <th>To</th>
+          <th>Text</th>
+          <th>Amount</th>
+          <th>Payee</th>
+          <th>Date</th>
+          <th>Received At</th>
+        </tr>
+      </thead>
+      <tbody id="sms-body"></tbody>
+    </table>
+  </div>
+
+  <script>
+    async function load() {
+      document.getElementById('status').textContent = '';
+      document.getElementById('loading').style.display = '';
+      document.getElementById('sms-table').style.display = 'none';
+      try {
+        const res = await fetch('/api/list-sms');
+        if (!res.ok) throw new Error('Fetch failed ' + res.status);
+        const json = await res.json();
+        if (!json.ok) throw new Error('API error');
+        const items = json.items || [];
+        const tbody = document.getElementById('sms-body');
+        tbody.innerHTML = '';
+        if (items.length === 0) {
+          document.getElementById('loading').textContent = 'No records found';
+          return;
+        }
+        items.forEach(it => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${it.id}</td>
+            <td>${escape(it.from)}</td>
+            <td>${escape(it.to)}</td>
+            <td>${escape(it.text)}</td>
+            <td>${it.parsed?.amount ?? ''}</td>
+            <td>${escape(it.parsed?.payee)}</td>
+            <td>${escape(it.parsed?.date_extracted)}</td>
+            <td>${escape(it.receivedAt)}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+        document.getElementById('sms-table').style.display = '';
+        document.getElementById('loading').style.display = 'none';
+      } catch (err) {
+        document.getElementById('loading').textContent = 'Error loading data';
+        document.getElementById('status').textContent = err.message;
+        console.error(err);
+      }
+    }
+
+    function escape(v){
+      if (v === undefined || v === null) return '';
+      return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    document.getElementById('refresh').addEventListener('click', load);
+    load();
+  </script>
+</body>
+</html>
