@@ -23,27 +23,32 @@ function initFirebase() {
     }
 }
 
-// --- 2. SMS PARSING FUNCTION (Regex) ---
-// This function extracts Amount, Payee, and Date from the raw SMS text.
-function parseSms(smsText) {
-    const regex = /Rs\.?([\d,]+\.\d{2}).*?To\s(.*?)\s*?On\s(\d{2}\/\d{2}\/\d{2})/si;
+// simple SMS parser: adjust regex as needed for your SMS format
+function parseSms(smsText = '') {
+    if (!smsText) return null;
+    // Example: "Your A/c XXXX debited by Rs.1,200.00 To MERCHANT On 12/10/25"
+    const regex = /Rs\.?\s*([\d,]+(?:\.\d{1,2})?).*?To\s(.*?)\s*On\s(\d{1,2}\/\d{1,2}\/\d{2,4})/si;
     const match = smsText.match(regex);
-
     if (match) {
-        const cleanAmount = match[1].replace(/,/g, ''); 
+        const cleanAmount = match[1].replace(/,/g, '');
         return {
-            amount: parseFloat(cleanAmount),
+            amount: Number(cleanAmount),
             payee: match[2].trim(),
-            date_extracted: match[3]
+            date_extracted: match[3].trim()
         };
     }
     return null;
 }
 
-
-// --- 3. VERSEL API HANDLER (Main Endpoint) ---
 module.exports = async (req, res) => {
     initFirebase();
+
+    // Optional API_KEY protection
+    const expectedKey = process.env.API_KEY;
+    const provided = req.headers['x-api-key'] || req.query?.api_key;
+    if (expectedKey && provided !== expectedKey) {
+        return res.status(401).json({ error: 'invalid_api_key' });
+    }
 
     if (req.method !== 'POST') {
         res.setHeader('Allow', 'POST');
@@ -51,15 +56,18 @@ module.exports = async (req, res) => {
     }
 
     try {
-        const textContent = req.body?.body || req.body?.text || req.query?.body || '';
+        // Accept JSON body or form data. Vercel parses JSON automatically.
+        const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
+        const textContent = (body.body || body.text || req.query?.body || '').toString();
         const parsed = parseSms(textContent);
 
         const payload = {
-            from: req.body?.from || req.query?.from || null,
-            to: req.body?.to || req.query?.to || null,
+            from: body.from || req.query?.from || null,
+            to: body.to || req.query?.to || null,
             text: textContent || null,
-            parsed: parsed, // include parsed object (null if parse failed)
-            receivedAt: new Date().toISOString()
+            parsed: parsed,
+            receivedAt: new Date().toISOString(),
+            raw: body
         };
 
         if (admin.firestore) {
