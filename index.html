@@ -5,7 +5,7 @@
   <title>Tracker API — Dashboard</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    body { font-family: system-ui, -apple-system, Arial; max-width: 900px; margin: 32px auto; padding: 0 16px; }
+    body { font-family: system-ui, -apple-system, Arial; max-width: 1000px; margin: 32px auto; padding: 0 16px; }
     h1 { margin-bottom: 4px; }
     p.lead { color: #444; margin-top: 0; }
     table { width: 100%; border-collapse: collapse; margin-top: 16px; }
@@ -18,7 +18,7 @@
 </head>
 <body>
   <h1>Welcome — Tracker API</h1>
-  <p class="lead">This dashboard shows the latest SMS entries stored by the API.</p>
+  <p class="lead">This dashboard shows the latest SMS entries stored by the API. If no data exists in Firestore, a dummy sample row is shown for testing.</p>
 
   <div>
     <button id="refresh">Refresh</button>
@@ -36,8 +36,8 @@
           <th>Text</th>
           <th>Amount</th>
           <th>Payee</th>
-          <th>Date</th>
-          <th>Received At</th>
+          <th>Date Extracted</th>
+          <th>Timestamp</th>
         </tr>
       </thead>
       <tbody id="sms-body"></tbody>
@@ -62,16 +62,17 @@
           return;
         }
         items.forEach(it => {
+          const amount = it.parsed?.amount != null ? Number(it.parsed.amount).toFixed(2) : '';
           const tr = document.createElement('tr');
           tr.innerHTML = `
-            <td>${it.id}</td>
+            <td>${escape(it.id)}</td>
             <td>${escape(it.from)}</td>
             <td>${escape(it.to)}</td>
             <td>${escape(it.text)}</td>
-            <td>${it.parsed?.amount ?? ''}</td>
+            <td>${amount}</td>
             <td>${escape(it.parsed?.payee)}</td>
             <td>${escape(it.parsed?.date_extracted)}</td>
-            <td>${escape(it.receivedAt)}</td>
+            <td>${escape(it.timestamp || it.receivedAt)}</td>
           `;
           tbody.appendChild(tr);
         });
