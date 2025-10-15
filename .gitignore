@@ -1,0 +1,14 @@
+# Dependencies
+/node_modules
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment
+.env
+.env.local
+
+# Service Account Key (CRUCIAL for security)
+*.json

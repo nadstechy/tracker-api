@@ -1,14 +1,19 @@
 {
-  "name": "sms-receiver",
+  "name": "tracker-api",
   "version": "1.0.0",
-  "description": "A project to receive and process SMS messages.",
+  "description": "API to log SMS data to Firebase",
   "main": "api/receive-sms.js",
   "scripts": {
-    "start": "node api/receive-sms.js"
+    "start": "echo 'Vercel will run this automatically'"
   },
-  "dependencies": {
-    "firebase-admin": "^10.0.0"
-  },
+  "keywords": [
+    "vercel",
+    "firebase",
+    "sms"
+  ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "firebase-admin": "^11.5.0" 
+  }
 }
