@@ -1,25 +1,28 @@
 // api/receive-sms.js
 const admin = require('firebase-admin');
 
-// --- 1. FIREBASE INITIALIZATION ---
-// Initialize the Firebase Admin SDK using the securely stored environment variable.
-let db;
-if (!admin.apps.length) {
-    try {
-        // The process.env.FIREBASE_SERVICE_ACCOUNT_KEY holds the full JSON string.
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY); 
-
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount)
-        });
-        db = admin.firestore();
-    } catch (error) {
-        console.error("Firebase initialization failed. Check FIREBASE_SERVICE_ACCOUNT_KEY.", error);
-        // Ensure a response is sent if initialization fails
-        db = null; 
+function initFirebase() {
+    if (admin.apps.length) return;
+    const svc = process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (!svc) {
+        // try default credentials (useful if running on GCP)
+        try {
+            admin.initializeApp();
+            return;
+        } catch (err) {
+            console.error('firebase init fallback failed', err);
+        }
     }
-} else {
-    db = admin.firestore();
+    try {
+        // SUPPORT: raw JSON or base64-encoded JSON in env var
+        const json = svc.trim().startsWith('{')
+            ? JSON.parse(svc)
+            : JSON.parse(Buffer.from(svc, 'base64').toString('utf8'));
+        admin.initializeApp({ credential: admin.credential.cert(json) });
+    } catch (err) {
+        console.error('Failed to initialize firebase-admin from FIREBASE_SERVICE_ACCOUNT:', err);
+        try { admin.initializeApp(); } catch (e) { /* ignore */ }
+    }
 }
 
 // --- 2. SMS PARSING FUNCTION (Regex) ---
@@ -47,51 +50,33 @@ function parseSms(smsText) {
 
 
 // --- 3. VERSEL API HANDLER (Main Endpoint) ---
-export default async (req, res) => {
-    // Basic validation
-    if (req.method !== 'POST') {
-        return res.status(405).send('Method Not Allowed. Use POST.');
-    }
-    if (!db) {
-         return res.status(503).json({ success: false, error: 'Database service unavailable.' });
-    }
+module.exports = async (req, res) => {
+    initFirebase();
 
-    // Expecting payload: { "message": "...", "sender": "..." } from iPhone Shortcut
-    const rawSms = req.body.message; 
-    
-    if (!rawSms) {
-        return res.status(400).send('Missing "message" in request body from shortcut.');
+    if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        return res.status(405).send('Method Not Allowed');
     }
 
     try {
-        const extractedData = parseSms(rawSms);
+        // Accept JSON and urlencoded bodies (Vercel will parse JSON automatically)
+        const payload = {
+            from: req.body?.from || req.query?.from || null,
+            to: req.body?.to || req.query?.to || null,
+            text: req.body?.body || req.body?.text || req.query?.body || null,
+            receivedAt: new Date().toISOString()
+        };
 
-        if (extractedData) {
-            // Build the final document to store
-            const dataToStore = {
-                ...extractedData, 
-                raw_sms: rawSms.trim(),
-                sender: req.body.sender || 'Unknown', 
-                // Use the server timestamp for accurate chronological sorting
-                timestamp: admin.firestore.FieldValue.serverTimestamp() 
-            };
-
-            // Write to the 'sms_logs' collection
-            await db.collection('sms_logs').add(dataToStore);
-
-            return res.status(200).json({ success: true, message: 'SMS logged and parsed successfully' });
-        } else {
-            // Log the unparsed SMS for review if the format didn't match
-            await db.collection('sms_logs').add({
-                 raw_sms: rawSms.trim(),
-                 sender: req.body.sender || 'Unknown',
-                 parse_status: 'FAILED',
-                 timestamp: admin.firestore.FieldValue.serverTimestamp()
-             });
-            return res.status(202).json({ success: false, message: 'SMS received but format was unparsable, logged raw.' });
+        // If Firestore available store, otherwise return payload
+        if (admin.firestore) {
+            const db = admin.firestore();
+            const doc = await db.collection('sms').add(payload);
+            return res.status(200).json({ ok: true, id: doc.id });
         }
-    } catch (error) {
-        console.error('API Execution Error:', error);
-        return res.status(500).json({ success: false, error: 'Internal Server Error during database operation.' });
+
+        return res.status(200).json({ ok: true, payload });
+    } catch (err) {
+        console.error('receive-sms error:', err);
+        return res.status(500).json({ error: 'internal_error' });
     }
 };
