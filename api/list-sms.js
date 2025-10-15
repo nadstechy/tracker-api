@@ -1,14 +1,15 @@
 const admin = require('firebase-admin');
 
-function initFirebase() {
-    if (admin.apps.length) return;
+function initFirebaseSafe() {
+    if (admin.apps.length) return true;
     const svc = process.env.FIREBASE_SERVICE_ACCOUNT;
     if (!svc) {
         try {
             admin.initializeApp();
-            return;
+            return true;
         } catch (err) {
-            console.error('firebase init fallback failed', err);
+            console.error('firebase init default failed:', err);
+            return false;
         }
     }
     try {
@@ -16,14 +17,17 @@ function initFirebase() {
             ? JSON.parse(svc)
             : JSON.parse(Buffer.from(svc, 'base64').toString('utf8'));
         admin.initializeApp({ credential: admin.credential.cert(json) });
+        return true;
     } catch (err) {
         console.error('Failed to initialize firebase-admin from FIREBASE_SERVICE_ACCOUNT:', err);
-        try { admin.initializeApp(); } catch (e) { /* ignore */ }
+        try { admin.initializeApp(); return true; } catch (e) { /* ignore */ }
+        return false;
     }
 }
 
 module.exports = async (req, res) => {
-    initFirebase();
+    // init but do not throw — fall back to dummy data on failure
+    const okInit = initFirebaseSafe();
 
     // Optional API_KEY protection for listing
     const expectedKey = process.env.API_KEY;
@@ -38,8 +42,7 @@ module.exports = async (req, res) => {
     }
 
     try {
-        // Try to read from Firestore
-        if (admin.firestore) {
+        if (okInit && admin.firestore) {
             const db = admin.firestore();
             const limit = Math.min(200, Number(req.query.limit) || 100);
             const snap = await db.collection('sms').orderBy('receivedAt', 'desc').limit(limit).get();
@@ -63,7 +66,7 @@ module.exports = async (req, res) => {
             }
         }
 
-        // If Firestore not available or no records, return a dummy sample item for testing
+        // Firestore unavailable or no records -> return dummy test record
         const now = new Date().toISOString();
         const dummy = {
             id: 'sample-1',
@@ -79,9 +82,21 @@ module.exports = async (req, res) => {
             timestamp: now,
             raw: {}
         };
-        return res.status(200).json({ ok: true, items: [dummy], note: 'dummy_returned' });
+        return res.status(200).json({ ok: true, items: [dummy], note: 'dummy_returned', firestore_available: okInit && !!admin.firestore });
     } catch (err) {
         console.error('list-sms error:', err);
-        return res.status(500).json({ error: 'internal_error' });
+        // safe fallback response so dashboard shows an explainable error instead of 500
+        const now = new Date().toISOString();
+        const dummy = {
+            id: 'sample-err',
+            from: null,
+            to: null,
+            text: 'Error fetching from Firestore',
+            parsed: { amount: 15.00, payee: 'Sample Payee', date_extracted: '01/01/25' },
+            receivedAt: now,
+            timestamp: now,
+            raw: {}
+        };
+        return res.status(200).json({ ok: false, items: [dummy], error: 'internal_error', message: String(err) });
     }
 };
