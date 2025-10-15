@@ -1,0 +1,14 @@
+{
+  "name": "sms-receiver",
+  "version": "1.0.0",
+  "description": "A project to receive and process SMS messages.",
+  "main": "api/receive-sms.js",
+  "scripts": {
+    "start": "node api/receive-sms.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^10.0.0"
+  },
+  "author": "",
+  "license": "ISC"
+}
